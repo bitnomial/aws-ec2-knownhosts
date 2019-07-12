@@ -1,5 +1,5 @@
 resolver: nightly-2017-09-06
 flags: {}
 packages:
-  - location: '.'
+  - '.'
 extra-deps: []
