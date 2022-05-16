@@ -1,0 +1,56 @@
+---
+
+name: Test
+
+on:
+  pull_request:
+    types:
+      - synchronize
+      - opened
+      - reopened
+      - ready_for_review
+
+jobs:
+  test:
+    if: github.event.pull_request.draft == false
+
+    runs-on: ubuntu-20.04
+
+    steps:
+      - uses: actions/checkout@v2
+        with:
+          fetch-depth: 0
+
+      # Github actions L1 cache
+      - name: stack home cache
+        id: cache-home-stack
+        uses: actions/cache@v2
+        with:
+          path: |
+            /github/home/.stack
+          key: ${{ runner.os }}-home-stack-${{ hashFiles('stack.yaml.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-home-stack-
+
+      - name: stack work cache
+        uses: actions/cache@v2
+        id: cache-stack-work
+        with:
+          path: |
+            **/.stack-work
+          key: ${{ runner.os }}-stack-work-${{ hashFiles('stack.yaml.lock') }}-${{ hashFiles('aws-ec2-knownhosts.cabal') }}
+          restore-keys: |
+            ${{ runner.os }}-stack-work-${{ hashFiles('stack.yaml.lock') }}-
+            ${{ runner.os }}-stack-work-
+
+      # Build
+      - name: stack build
+        run: |
+          stack build --test --bench --no-run-tests --no-run-benchmarks --ghc-options="+RTS -A256m -I0 -RTS" --no-interleaved-output
+
+      # Test
+      - name: stack test
+        run: |
+          stack test --ghc-options="+RTS -A256m -I0 -RTS" --no-interleaved-output
+
+
