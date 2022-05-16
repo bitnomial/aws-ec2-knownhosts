@@ -7,7 +7,6 @@ import           Data.Aeson                   (Result (..), fromJSON, json')
 import           Data.Bool                    (bool)
 import           Data.Function                (on)
 import           Data.List                    (foldl')
-import           Data.Monoid                  ((<>))
 import           Filesystem.Path.CurrentOS    (encodeString, fromText)
 import           Prelude                      hiding (FilePath)
 import qualified System.IO.Streams            as Streams

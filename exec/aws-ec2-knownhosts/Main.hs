@@ -3,7 +3,6 @@
 module Main where
 
 import           Data.Aeson                   (Result (..), fromJSON, json)
-import           Data.Maybe                   (maybe)
 import           Filesystem.Path.CurrentOS    (encodeString)
 import           Prelude                      hiding (FilePath)
 import qualified System.IO.Streams            as Streams
