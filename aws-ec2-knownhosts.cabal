@@ -22,8 +22,8 @@ library
                  , AWS.PubKeys
                  , AWS.Types
 
-  build-depends: base        >= 4.7   && < 4.13
-               , aeson       >= 1.0   && < 1.5
+  build-depends: base        >= 4.7   && < 5
+               , aeson       >= 2.0   && < 2.1
                , async       >= 2.0   && < 2.3
                , attoparsec  >= 0.12  && < 0.14
                , bytestring  >= 0.10  && < 0.11
@@ -41,7 +41,7 @@ executable aws-ec2-pubkeys
   default-language:  Haskell2010
   ghc-options:       -threaded -Wall -fwarn-tabs -funbox-strict-fields -O2 -rtsopts
 
-  build-depends: base               >= 4.7 && < 4.13
+  build-depends: base               >= 4.7 && < 5
                , aws-ec2-knownhosts
                , io-streams         >= 1.1 && < 1.6
                , system-filepath    >= 0.4 && < 0.5
@@ -54,8 +54,8 @@ executable aws-ec2-knownhosts
   default-language:  Haskell2010
   ghc-options:       -threaded -Wall -fwarn-tabs -funbox-strict-fields -O2 -rtsopts
 
-  build-depends: base               >= 4.7 && < 4.13
-               , aeson              >= 1.0 && < 1.5
+  build-depends: base               >= 4.7 && < 5
+               , aeson              >= 2.0 && < 2.1
                , aws-ec2-knownhosts
                , io-streams         >= 1.1 && < 1.6
                , system-filepath    >= 0.4 && < 0.5
@@ -68,8 +68,8 @@ executable aws-ec2-keysync
   default-language:  Haskell2010
   ghc-options:       -threaded -Wall -fwarn-tabs -funbox-strict-fields -O2 -rtsopts
 
-  build-depends: base               >= 4.7 && < 4.13
-               , aeson              >= 1.0 && < 1.5
+  build-depends: base               >= 4.7 && < 5
+               , aeson              >= 2.0 && < 2.1
                , aws-ec2-knownhosts
                , io-streams         >= 1.1 && < 1.6
                , system-filepath    >= 0.4 && < 0.5

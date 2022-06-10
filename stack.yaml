@@ -1,5 +1,6 @@
-resolver: lts-14.17
+resolver: lts-19.10
 flags: {}
 packages:
   - '.'
-extra-deps: []
+extra-deps:
+  - stack-format-0.3.2
