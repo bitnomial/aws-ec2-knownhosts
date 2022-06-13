@@ -3,21 +3,10 @@
 # For more information, please see the documentation at:
 #   https://docs.haskellstack.org/en/stable/lock_files
 
-packages:
-- completed:
-    name: text-format
-    pantry-tree:
-      sha256: fac733f9363ae03a3df48c151d9ad15cb148fe5c3c407821d7f241b3ad1d00af
-      size: 1273
-    commit: eded7ae45ae985673fa0902ba622ccd95e66728e
-    git: https://github.com/oliverbunting/text-format.git
-    version: 0.3.3
-  original:
-    commit: eded7ae45ae985673fa0902ba622ccd95e66728e
-    git: https://github.com/oliverbunting/text-format.git
+packages: []
 snapshots:
 - completed:
-    sha256: fb634b19f31da06684bb07ce02a20c75a3162138f279b388905b03ebd57bb50f
-    size: 618876
-    url: https://raw.githubusercontent.com/commercialhaskell/stackage-snapshots/master/lts/19/6.yaml
-  original: lts-19.6
+    size: 619152
+    url: https://raw.githubusercontent.com/commercialhaskell/stackage-snapshots/master/lts/19/11.yaml
+    sha256: 692668712aa3a6638401ce921cd043f5f9a8b018af9ba13ae350871196b047d6
+  original: lts-19.11
