@@ -1,5 +1,4 @@
 {-# LANGUAGE OverloadedStrings #-}
-{-# LANGUAGE TupleSections     #-}
 
 module AWS.PubKeys
   ( getPubKeys
@@ -19,12 +18,12 @@ import           Data.ByteString.Lazy.Char8       (toStrict)
 import           Data.List                        (find)
 import           Data.Maybe                       (catMaybes, mapMaybe)
 import           Data.Text.Encoding               (decodeUtf8)
-import           Data.Text.Format                 (format)
 import qualified Data.Text.Lazy                   as LT
 import           Prelude                          hiding (filter, takeWhile)
 import qualified System.IO.Streams                as Streams
 import           System.IO.Streams.Attoparsec     (parseFromStream)
 import           System.IO.Streams.Process        (runInteractiveCommand)
+import           Text.Printf                      (printf)
 
 import           AWS.Types                        (Ec2Instance (..), Key (..))
 
@@ -40,8 +39,7 @@ getPubKey inst = do
     return $ (\k -> inst{instancePubKey=Just k}) <$> find ((keytype' ==) . keyType) keys'
   where
     keytype' = "ecdsa-sha2-nistp256"
-    command = LT.unpack $ format consoleOutput (region inst, instanceId inst)
-    consoleOutput = "aws ec2 get-console-output --region {} --output text --instance-id {}"
+    command = printf "aws ec2 get-console-output --region %s --output text --instance-id %s" (region inst)  (instanceId inst)
 
 
 writePubKeys :: FilePath -> [Ec2Instance] -> IO ()
