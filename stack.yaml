@@ -1,10 +1,5 @@
-resolver: lts-19.6
+resolver: lts-19.11
 flags: {}
 packages:
   - '.'
-extra-deps:
-  # There is an open PR to get text-format compiling on GHC-9:
-  # https://github.com/hackage-trustees/text-format/pull/3
-  # This is the repo/commit from that PR.
-  - git: https://github.com/oliverbunting/text-format.git
-    commit: eded7ae45ae985673fa0902ba622ccd95e66728e
+extra-deps: []
