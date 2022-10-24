@@ -1,31 +1,39 @@
 {-# LANGUAGE OverloadedStrings #-}
 
-module AWS.PubKeys
-  ( getPubKeys
-  , writePubKeys
-  , instanceParser
-  ) where
+module AWS.PubKeys (
+    getPubKeys,
+    writePubKeys,
+    instanceParser,
+) where
 
-import           Control.Applicative              (Alternative, (*>), (<*), (<|>))
-import           Control.Concurrent.Async         (mapConcurrently)
-import           Data.Aeson                       (decodeStrict', encode)
-import qualified Data.Attoparsec.ByteString       as W8
-import           Data.Attoparsec.ByteString.Char8 (Parser, endOfInput, endOfLine, isEndOfLine, isSpace, manyTill',
-                                                   skipSpace, string, (<?>))
+import AWS.Types (Ec2Instance (..), Key (..))
+import Control.Applicative (Alternative, (*>), (<*), (<|>))
+import Control.Concurrent.Async (mapConcurrently)
+import Data.Aeson (decodeStrict', encode)
+import qualified Data.Attoparsec.ByteString as W8
+import Data.Attoparsec.ByteString.Char8 (
+    Parser,
+    endOfInput,
+    endOfLine,
+    isEndOfLine,
+    isSpace,
+    manyTill',
+    skipSpace,
+    string,
+    (<?>),
+ )
 import qualified Data.Attoparsec.ByteString.Char8 as C8
-import           Data.ByteString.Char8            (ByteString, filter)
-import           Data.ByteString.Lazy.Char8       (toStrict)
-import           Data.List                        (find)
-import           Data.Maybe                       (catMaybes, mapMaybe)
-import           Data.Text.Encoding               (decodeUtf8)
-import qualified Data.Text.Lazy                   as LT
-import           Prelude                          hiding (filter, takeWhile)
-import qualified System.IO.Streams                as Streams
-import           System.IO.Streams.Attoparsec     (parseFromStream)
-import           System.IO.Streams.Process        (runInteractiveCommand)
-import           Text.Printf                      (printf)
-
-import           AWS.Types                        (Ec2Instance (..), Key (..))
+import Data.ByteString.Char8 (ByteString, filter)
+import Data.ByteString.Lazy.Char8 (toStrict)
+import Data.List (find)
+import Data.Maybe (catMaybes, mapMaybe)
+import qualified Data.Text as T
+import Data.Text.Encoding (decodeUtf8)
+import qualified System.IO.Streams as Streams
+import System.IO.Streams.Attoparsec (parseFromStream)
+import System.IO.Streams.Process (runInteractiveCommand)
+import Text.Printf (printf)
+import Prelude hiding (filter, takeWhile)
 
 
 getPubKeys :: [Ec2Instance] -> IO [Ec2Instance]
@@ -36,10 +44,14 @@ getPubKey :: Ec2Instance -> IO (Maybe Ec2Instance)
 getPubKey inst = do
     (_, stdout, _, _) <- runInteractiveCommand command
     keys' <- Streams.map (filter (/= '\r')) stdout >>= parseFromStream keyParser
-    return $ (\k -> inst{instancePubKey=Just k}) <$> find ((keytype' ==) . keyType) keys'
+    return $ (\k -> inst{instancePubKey = Just k}) <$> find ((keytype' ==) . keyType) keys'
   where
     keytype' = "ecdsa-sha2-nistp256"
-    command = printf "aws ec2 get-console-output --region %s --output text --instance-id %s" (region inst)  (instanceId inst)
+    command =
+        printf
+            "aws ec2 get-console-output --region %s --output text --instance-id %s"
+            (region inst)
+            (instanceId inst)
 
 
 writePubKeys :: FilePath -> [Ec2Instance] -> IO ()
@@ -47,7 +59,9 @@ writePubKeys file = Streams.withFileAsOutput file . Streams.write . Just . toStr
 
 
 instanceParser :: Parser [Ec2Instance]
-instanceParser = mapMaybe decodeStrict' <$> (W8.takeTill isEndOfLine `W8.sepBy` endOfLine <* endOfInput) <?> "instances"
+instanceParser = mapMaybe decodeStrict' <$> line <?> "instances"
+  where
+    line = W8.takeTill isEndOfLine `W8.sepBy` endOfLine <* endOfInput
 
 
 keyParser :: Parser [Key]
@@ -65,16 +79,16 @@ skipLine :: Parser ()
 skipLine = W8.skipWhile (not . isEndOfLine) <* endOfLine <?> "skip line"
 
 
-line :: ByteString -> Parser ()
-line s = string s *> endOfLine <?> "exact line"
+exactLine :: ByteString -> Parser ()
+exactLine s = string s *> endOfLine <?> "exact line"
 
 
 keysBegin :: Parser ()
-keysBegin = line "-----BEGIN SSH HOST KEY KEYS-----" <?> "keys begin"
+keysBegin = exactLine "-----BEGIN SSH HOST KEY KEYS-----" <?> "keys begin"
 
 
 keysEnd :: Parser ()
-keysEnd = line "-----END SSH HOST KEY KEYS-----" <?> "keys end"
+keysEnd = exactLine "-----END SSH HOST KEY KEYS-----" <?> "keys end"
 
 
 keys :: Parser [Key]
@@ -82,10 +96,11 @@ keys = manyTill' key keysEnd <?> "keys"
 
 
 key :: Parser Key
-key = do
-    keyType' <- decodeUtf8 <$> C8.takeTill isSpace
-    skipSpace
-    pubKey' <- decodeUtf8 <$> C8.takeTill isSpace
-    skipLine
-    return $ Key keyType' pubKey'
-    <?> "key"
+key =
+    do
+        keyType' <- decodeUtf8 <$> C8.takeTill isSpace
+        skipSpace
+        pubKey' <- decodeUtf8 <$> C8.takeTill isSpace
+        skipLine
+        return $ Key keyType' pubKey'
+        <?> "key"

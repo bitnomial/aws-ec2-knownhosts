@@ -19,7 +19,7 @@ provisioner to output the newly created AWS instance IDs and DNS names:
       count = "${var.service_count}"
       [...]
       provisioner "local-exec" {
-        command = "touch aws-ec2-instances.json && echo '{\"init_key\": \""${var.key_name}"\", \"fqdn\": \"${aws_route53_record.public.fqdn}\", \"region\": \"${var.region}\", \"instance_id\": \"${element(aws_instance.service.*.id, count.index)}\", \"dns\": \"${element(aws_instance.service.*.private_dns, count.index)}\"}' >> aws-ec2-instances.json"
+        command = "touch aws-ec2-instances.json && echo '{\"fqdn\": \"${aws_route53_record.public.fqdn}\", \"region\": \"${var.region}\", \"instance_id\": \"${element(aws_instance.service.*.id, count.index)}\", \"dns\": \"${element(aws_instance.service.*.private_dns, count.index)}\"}' >> aws-ec2-instances.json"
       }
     }
 
