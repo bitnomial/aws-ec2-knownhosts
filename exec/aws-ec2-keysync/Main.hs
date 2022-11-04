@@ -9,56 +9,51 @@ import Data.Aeson (Result (..), fromJSON, json')
 import Data.Bool (bool)
 import Data.Function (on)
 import Data.List (foldl')
-import Filesystem.Path.CurrentOS (encodeString, fromText)
+import Data.Text (Text)
+import qualified Data.Text as Text (unpack)
+import System.Process (callProcess, system)
+import System.PosixCompat (getFileStatus, isRegularFile)
+import System.Directory (removeFile)
+import System.Exit (ExitCode (..), exitWith)
 import qualified System.IO.Streams as Streams
 import System.IO.Streams.Attoparsec (parseFromStream)
-import Turtle (
-    ExitCode (..),
-    FilePath,
-    Parser,
-    Text,
-    argPath,
-    argText,
-    exit,
-    format,
-    fp,
-    isRegularFile,
-    options,
-    proc,
-    rm,
-    stat,
- )
-import Prelude hiding (FilePath)
+import Options.Applicative (Parser)
+import qualified Options.Applicative as Opt
 
 
 main :: IO ()
-main = options "Synchronize pubkeys from EC2 to AWS S3" args >>= processPubKeys
+main = Opt.execParser opts >>= processPubKeys
+  where
+    opts = Opt.info (Opt.helper <*> args)
+      $ Opt.fullDesc
+           <> Opt.progDesc "Copy pubkeys from EC2 to AWS S3"
+           <> Opt.header "aws-ec2-keysync - Synchronize pubkeys from EC2 to AWS S3"
 
 
 args :: Parser (FilePath, FilePath, Text)
 args =
     (,,)
-        <$> argPath "local_pubkey_filename" "Local pubkey file to send to S3"
-        <*> argPath "remote_pubkey_filename" "Destination pubkey file to send to S3"
-        <*> argText "s3_bucket_name" "AWS S3 bucket name to store pubkeys"
+        <$> Opt.strArgument (Opt.metavar "LOCAL_PUBKEY_FILENAME" <> Opt.help "Local pubkey file to send to S3")
+        <*> Opt.strArgument (Opt.metavar "REMOTE_PUBKEY_FILENAME" <> Opt.help "Destination pubkey file to send to S3")
+        <*> Opt.strArgument (Opt.metavar "S3_BUCKET_NAME" <> Opt.help "AWS S3 bucket name to store pubkeys")
 
 
 processPubKeys :: (FilePath, FilePath, Text) -> IO ()
 processPubKeys (localPubKeyFile, remotePubKeyFile, bucketName) = do
     newPubKeys <- readPubKeys localPubKeyFile
     remotePubKeys <- getFromS3 remotePubKeyFile tempRemoteFile bucketName
-    writePubKeys (encodeString mergedKeyFile) $ merge remotePubKeys newPubKeys
+    writePubKeys mergedKeyFile $ merge remotePubKeys newPubKeys
     copyToS3 mergedKeyFile remotePubKeyFile bucketName
   where
     tempRemoteFile :: FilePath
-    tempRemoteFile = "/tmp/" <> fromText bucketName <> "-" <> remotePubKeyFile
+    tempRemoteFile = "/tmp/" <> Text.unpack bucketName <> "-" <> remotePubKeyFile
     mergedKeyFile = "/tmp/merged-keys.json"
 
 
 readPubKeys :: FilePath -> IO [Ec2Instance]
 readPubKeys pubKeyFile =
     Streams.withFileAsInput
-        (encodeString pubKeyFile)
+        pubKeyFile
         (handleResult <=< parseFromStream pubKeyParser)
   where
     pubKeyParser = fmap fromJSON json'
@@ -79,27 +74,27 @@ handleResult :: Result a -> IO a
 handleResult (Success a) = pure a
 handleResult (Error s) = do
     putStrLn ("Parse error: " <> s)
-    exit (ExitFailure (-1))
+    exitWith (ExitFailure (-1))
 
 
 getFromS3 :: FilePath -> FilePath -> Text -> IO [Ec2Instance]
 getFromS3 remoteFile tempRemoteFile bucketName = do
-    _ <- proc "aws" ["s3", "cp", source, format fp tempRemoteFile] ""
-    stat tempRemoteFile >>= bool (return []) (readPubKeys tempRemoteFile) . isRegularFile
+    _ <- callProcess "aws" ["s3", "cp", source, tempRemoteFile]
+    getFileStatus tempRemoteFile >>= bool (return []) (readPubKeys tempRemoteFile) . isRegularFile
   where
-    source = "s3://" <> bucketName <> "/" <> format fp remoteFile
+    source = "s3://" <> Text.unpack bucketName <> "/" <> remoteFile
 
 
 copyToS3 :: FilePath -> FilePath -> Text -> IO ()
 copyToS3 localFile remoteFile bucketName =
-    proc "aws" ["s3", "cp", format fp localFile, dest] "" >>= checkUpload
+    system (unwords ["aws", "s3", "cp", localFile, dest]) >>= checkUpload
   where
-    dest = "s3://" <> bucketName <> "/" <> format fp remoteFile
+    dest = "s3://" <> Text.unpack bucketName <> "/" <> remoteFile
     checkUpload ExitSuccess = putStrLn "Upload successful"
     checkUpload _ = do
         putStrLn "Failure uploading pubkey file. Check AWS credentials."
-        exit $ ExitFailure (-1)
+        exitWith $ ExitFailure (-1)
 
 
 cleanup :: FilePath -> FilePath -> IO ()
-cleanup tempRemoteFile mergedKeyFile = rm tempRemoteFile >> rm mergedKeyFile
+cleanup tempRemoteFile mergedKeyFile = removeFile tempRemoteFile >> removeFile mergedKeyFile
