@@ -43,7 +43,7 @@ executable aws-ec2-pubkeys
   build-depends: base               >= 4.7 && < 5
                , aws-ec2-knownhosts
                , io-streams         >= 1.1 && < 1.6
-               , optparse-applicative >= 0.17 && < 1.0
+               , optparse-applicative >= 0.16 && < 0.18
 
 
 executable aws-ec2-knownhosts
@@ -56,7 +56,7 @@ executable aws-ec2-knownhosts
                , aeson              >= 1.0 && < 2.1
                , aws-ec2-knownhosts
                , io-streams         >= 1.1 && < 1.6
-               , optparse-applicative >= 0.17 && < 1.0
+               , optparse-applicative >= 0.16 && < 0.18
 
 
 executable aws-ec2-keysync
@@ -70,7 +70,7 @@ executable aws-ec2-keysync
                , aws-ec2-knownhosts
                , io-streams         >= 1.1 && < 1.6
                , text               >= 1.0 && < 2.1
-               , optparse-applicative >= 0.17 && < 1.0
+               , optparse-applicative >= 0.16 && < 0.18
                , directory          >= 1.3 && < 1.4
                , unix-compat        >= 0.4 && < 0.7
                , process            >= 1.0 && < 1.7
