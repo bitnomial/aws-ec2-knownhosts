@@ -1,4 +1,13 @@
 {
+  # Use `nix run` to invoke (and if necessary, build) the binaries in this package, like so:
+  # `$ nix run github:bitnomial/aws-ec2-knownhosts`  # equivalent to the command on the next line
+  # `$ nix run github:bitnomial/aws-ec2-knownhosts#aws-ec2-knownhosts`
+  # `$ nix run github:bitnomial/aws-ec2-knownhosts#aws-ec2-pubkeys`
+  # `$ nix run github:bitnomial/aws-ec2-knownhosts#aws-ec2-keysync`
+  #
+  # The `nix-command` and `flakes` experimental features need to be enabled either on the CLI
+  # or in nix.conf
+
   description = "aws-ec2-knownhosts";
 
   inputs = {
