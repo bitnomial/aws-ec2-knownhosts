@@ -7,7 +7,7 @@ module AWS.PubKeys (
 ) where
 
 import AWS.Types (Ec2Instance (..), Key (..))
-import Control.Applicative (Alternative, (*>), (<*), (<|>))
+import Control.Applicative (Alternative, (<|>))
 import Control.Concurrent.Async (mapConcurrently)
 import Data.Aeson (decodeStrict', encode)
 import qualified Data.Attoparsec.ByteString as W8
@@ -27,7 +27,6 @@ import Data.ByteString.Char8 (ByteString, filter)
 import Data.ByteString.Lazy.Char8 (toStrict)
 import Data.List (find)
 import Data.Maybe (catMaybes, mapMaybe)
-import qualified Data.Text as T
 import Data.Text.Encoding (decodeUtf8)
 import qualified System.IO.Streams as Streams
 import System.IO.Streams.Attoparsec (parseFromStream)

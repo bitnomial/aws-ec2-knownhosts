@@ -3,3 +3,5 @@ flags: {}
 packages:
   - "."
 extra-deps: []
+ghc-options:
+  "$locals": -Werror
