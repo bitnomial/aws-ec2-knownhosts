@@ -6,8 +6,6 @@ module AWS.KnownHosts (
 
 import AWS.Types (Ec2Instance (..), Key (..))
 import Data.ByteString.Char8 (ByteString)
-import Data.Monoid ((<>))
-import qualified Data.Text as T
 import Data.Text.Encoding (encodeUtf8)
 import GHC.IO.Handle (BufferMode (NoBuffering))
 import System.Directory (getHomeDirectory)
@@ -24,44 +22,48 @@ import Prelude hiding (filter, takeWhile)
 
 updateKnownHosts :: [Ec2Instance] -> IO ()
 updateKnownHosts ks = do
+    mapM_ removeKey ks
     homeDir <- getHomeDirectory
-    withFileAsOutputExt (knownHosts homeDir) AppendMode NoBuffering $ updateKeys ks
+    withFileAsOutputExt (knownHosts homeDir) AppendMode NoBuffering $ writeKeys ks
   where
     knownHosts homeDir = homeDir </> ".ssh" </> "known_hosts"
 
 
-updateKeys :: [Ec2Instance] -> Streams.OutputStream ByteString -> IO ()
-updateKeys ks out = do
+writeKeys :: [Ec2Instance] -> Streams.OutputStream ByteString -> IO ()
+writeKeys ks out = do
     out' <- Streams.intersperse "\n" out
-    mapM_ (updateKey out') ks
+    mapM_ (writeKey out') ks
     Streams.write (Just "\n") out
 
 
-updateKey :: Streams.OutputStream ByteString -> Ec2Instance -> IO ()
-updateKey out inst
+writeKey :: Streams.OutputStream ByteString -> Ec2Instance -> IO ()
+writeKey out inst
     | Just k <- instancePubKey inst =
-        removeKey inst `seq`
-            Streams.write
-                ( Just $
-                    encodeUtf8
-                        ( fqdn inst
-                            <> ","
-                            <> dns inst
-                            <> " "
-                            <> keyType k
-                            <> " "
-                            <> pubKey k
-                        )
-                )
-                out
-updateKey _ _ = return ()
+        Streams.write
+            ( Just $
+                encodeUtf8
+                    ( fqdn inst
+                        <> ","
+                        <> dns inst
+                        <> ","
+                        <> instanceId inst
+                        <> " "
+                        <> keyType k
+                        <> " "
+                        <> pubKey k
+                    )
+            )
+            out
+writeKey _ _ = return ()
 
 
 removeKey :: Ec2Instance -> IO ExitCode
 removeKey inst = do
     (_, _, _, pid1) <- runInteractiveCommand $ printf removeKeyCommand (dns inst)
-    waitForProcess pid1
+    _ <- waitForProcess pid1
     (_, _, _, pid2) <- runInteractiveCommand $ printf removeKeyCommand (fqdn inst)
-    waitForProcess pid2
+    _ <- waitForProcess pid2
+    (_, _, _, pid3) <- runInteractiveCommand $ printf removeKeyCommand (instanceId inst)
+    waitForProcess pid3
   where
     removeKeyCommand = "ssh-keygen -R %s"
