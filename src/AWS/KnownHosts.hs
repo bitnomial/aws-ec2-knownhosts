@@ -9,13 +9,11 @@ import Data.ByteString.Char8 (ByteString)
 import Data.Text.Encoding (encodeUtf8)
 import GHC.IO.Handle (BufferMode (NoBuffering))
 import System.Directory (getHomeDirectory)
-import System.Exit (ExitCode)
 import System.FilePath.Posix ((</>))
 import System.IO (IOMode (AppendMode))
 import qualified System.IO.Streams as Streams
 import System.IO.Streams.File (withFileAsOutputExt)
-import System.IO.Streams.Process (runInteractiveCommand)
-import System.Process (waitForProcess)
+import System.Process (callCommand)
 import Text.Printf (printf)
 import Prelude hiding (filter, takeWhile)
 
@@ -57,13 +55,10 @@ writeKey out inst
 writeKey _ _ = return ()
 
 
-removeKey :: Ec2Instance -> IO ExitCode
+removeKey :: Ec2Instance -> IO ()
 removeKey inst = do
-    (_, _, _, pid1) <- runInteractiveCommand $ printf removeKeyCommand (dns inst)
-    _ <- waitForProcess pid1
-    (_, _, _, pid2) <- runInteractiveCommand $ printf removeKeyCommand (fqdn inst)
-    _ <- waitForProcess pid2
-    (_, _, _, pid3) <- runInteractiveCommand $ printf removeKeyCommand (instanceId inst)
-    waitForProcess pid3
+    callCommand $ printf removeKeyCommand (dns inst)
+    callCommand $ printf removeKeyCommand (fqdn inst)
+    callCommand $ printf removeKeyCommand (instanceId inst)
   where
     removeKeyCommand = "ssh-keygen -R %s"
