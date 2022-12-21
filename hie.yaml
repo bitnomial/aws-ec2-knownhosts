@@ -1,0 +1,12 @@
+---
+cradle:
+  stack:
+    - component: "aws-ec2-knownhosts:lib"
+      path: "./src"
+
+    - component: "aws-ec2-knownhosts:exe:aws-ec2-pubkeys"
+      path: "./exec/aws-ec2-pubkeys"
+    - component: "aws-ec2-knownhosts:exe:knownhosts"
+      path: "./exec/aws-ec2-knownhosts"
+    - component: "aws-ec2-knownhosts:exe:keysync"
+      path: "./exec/aws-ec2-keysync"
