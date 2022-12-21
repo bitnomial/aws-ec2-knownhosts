@@ -9,6 +9,7 @@ module AWS.PubKeys (
 import AWS.Types (Ec2Instance (..), Key (..))
 import Control.Applicative (Alternative, (<|>))
 import Control.Concurrent.Async (mapConcurrently)
+import Control.Exception (Exception, SomeException, throwIO, tryJust)
 import Data.Aeson (decodeStrict', encode)
 import qualified Data.Attoparsec.ByteString as W8
 import Data.Attoparsec.ByteString.Char8 (
@@ -26,7 +27,7 @@ import qualified Data.Attoparsec.ByteString.Char8 as C8
 import Data.ByteString.Char8 (ByteString, filter)
 import Data.ByteString.Lazy.Char8 (toStrict)
 import Data.List (find)
-import Data.Maybe (catMaybes, mapMaybe)
+import Data.Maybe (mapMaybe)
 import Data.Text.Encoding (decodeUtf8)
 import qualified System.IO.Streams as Streams
 import System.IO.Streams.Attoparsec (parseFromStream)
@@ -35,16 +36,28 @@ import Text.Printf (printf)
 import Prelude hiding (filter, takeWhile)
 
 
-getPubKeys :: [Ec2Instance] -> IO [Ec2Instance]
-getPubKeys = fmap catMaybes <$> mapConcurrently getPubKey
+getPubKeys :: [Ec2Instance] -> IO [Either Ec2Instance Ec2Instance]
+getPubKeys = mapConcurrently getPubKey
 
 
-getPubKey :: Ec2Instance -> IO (Maybe Ec2Instance)
-getPubKey inst = do
+data GetPubkeyException = NoKeyTypeFound Ec2Instance [Key]
+    deriving (Show, Eq)
+
+
+instance Exception GetPubkeyException
+
+
+getPubKey :: Ec2Instance -> IO (Either Ec2Instance Ec2Instance)
+getPubKey inst = tryJust handler $ do
     (_, stdout, _, _) <- runInteractiveCommand command
     keys' <- Streams.map (filter (/= '\r')) stdout >>= parseFromStream keyParser
-    return $ (\k -> inst{instancePubKey = Just k}) <$> find ((keytype' ==) . keyType) keys'
+    let newInst = (\k -> inst{instancePubKey = Just k}) <$> find ((keytype' ==) . keyType) keys'
+    case newInst of
+        Just inst' -> pure inst'
+        Nothing -> throwIO $ NoKeyTypeFound inst keys'
   where
+    handler :: SomeException -> Maybe Ec2Instance
+    handler _ = Just inst
     keytype' = "ecdsa-sha2-nistp256"
     command =
         printf

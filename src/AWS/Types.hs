@@ -15,6 +15,12 @@ import Data.Aeson.Types (typeMismatch)
 import Data.Text (Text)
 
 
+type Fqdn = Text
+type Region = Text
+type InstanceId = Text
+type Dns = Text
+
+
 data Key = Key
     { keyType :: Text
     , pubKey :: Text
@@ -23,10 +29,10 @@ data Key = Key
 
 
 data Ec2Instance = Ec2Instance
-    { fqdn :: Text
-    , region :: Text
-    , instanceId :: Text
-    , dns :: Text
+    { fqdn :: Fqdn
+    , region :: Region
+    , instanceId :: InstanceId
+    , dns :: Dns
     , instancePubKey :: Maybe Key
     }
     deriving (Show, Eq)
