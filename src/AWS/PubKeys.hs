@@ -61,7 +61,7 @@ getPubKey inst = tryJust handler $ do
     keytype' = "ecdsa-sha2-nistp256"
     command =
         printf
-            "aws ec2 get-console-output --region %s --output text --instance-id %s"
+            "aws ec2 get-console-output --region %s --latest --output text --instance-id %s"
             (region inst)
             (instanceId inst)
 
