@@ -4,7 +4,8 @@ module Main where
 
 import AWS.KnownHosts (updateKnownHosts)
 import AWS.Types (Ec2Instance (..))
-import Data.Aeson (Result (..), fromJSON, json)
+import Data.Aeson (Result (..), fromJSON)
+import Data.Aeson.Parser (json)
 import Options.Applicative (Parser)
 import qualified Options.Applicative as Opt
 import qualified System.IO.Streams as Streams
