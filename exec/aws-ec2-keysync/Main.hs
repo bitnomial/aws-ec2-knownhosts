@@ -5,29 +5,31 @@ module Main where
 import AWS.PubKeys (writePubKeys)
 import AWS.Types (Ec2Instance (..))
 import Control.Monad ((<=<))
-import Data.Aeson (Result (..), fromJSON, json')
+import Data.Aeson (Result (..), fromJSON)
+import Data.Aeson.Parser (json')
 import Data.Bool (bool)
 import Data.Function (on)
 import Data.List (foldl')
 import Data.Text (Text)
 import qualified Data.Text as Text (unpack)
-import System.Process (callProcess, system)
-import System.PosixCompat (getFileStatus, isRegularFile)
+import Options.Applicative (Parser)
+import qualified Options.Applicative as Opt
 import System.Directory (removeFile)
 import System.Exit (ExitCode (..), exitWith)
 import qualified System.IO.Streams as Streams
 import System.IO.Streams.Attoparsec (parseFromStream)
-import Options.Applicative (Parser)
-import qualified Options.Applicative as Opt
+import System.PosixCompat (getFileStatus, isRegularFile)
+import System.Process (callProcess, system)
 
 
 main :: IO ()
 main = Opt.execParser opts >>= processPubKeys
   where
-    opts = Opt.info (Opt.helper <*> args)
-      $ Opt.fullDesc
-           <> Opt.progDesc "Copy pubkeys from EC2 to AWS S3"
-           <> Opt.header "aws-ec2-keysync - Synchronize pubkeys from EC2 to AWS S3"
+    opts =
+        Opt.info (Opt.helper <*> args) $
+            Opt.fullDesc
+                <> Opt.progDesc "Copy pubkeys from EC2 to AWS S3"
+                <> Opt.header "aws-ec2-keysync - Synchronize pubkeys from EC2 to AWS S3"
 
 
 args :: Parser (FilePath, FilePath, Text)

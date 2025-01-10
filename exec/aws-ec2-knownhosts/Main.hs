@@ -4,29 +4,31 @@ module Main where
 
 import AWS.KnownHosts (updateKnownHosts)
 import AWS.Types (Ec2Instance (..))
-import Data.Aeson (Result (..), fromJSON, json)
-import qualified System.IO.Streams as Streams
-import System.IO.Streams.Attoparsec (parseFromStream)
+import Data.Aeson (Result (..), fromJSON)
+import Data.Aeson.Parser (json)
 import Options.Applicative (Parser)
 import qualified Options.Applicative as Opt
+import qualified System.IO.Streams as Streams
+import System.IO.Streams.Attoparsec (parseFromStream)
 
 
 main :: IO ()
 main = do
-  Opt.execParser opts
-    >>= readKeys
-    >>= maybe noKeys updateKnownHosts
+    Opt.execParser opts
+        >>= readKeys
+        >>= maybe noKeys updateKnownHosts
   where
-    opts = Opt.info (Opt.helper <*> args)
-        $ Opt.fullDesc
-            <> Opt.progDesc "Update known_hosts file with pubkeys from EC2"
-            <> Opt.header "aws-ec2-knownhosts - Get EC2 pubkeys on your known_hosts file"
+    opts =
+        Opt.info (Opt.helper <*> args) $
+            Opt.fullDesc
+                <> Opt.progDesc "Update known_hosts file with pubkeys from EC2"
+                <> Opt.header "aws-ec2-knownhosts - Get EC2 pubkeys on your known_hosts file"
 
 
 args :: Parser FilePath
 args =
-  Opt.strArgument $
-    Opt.metavar "PUBKEY_FILE" <> Opt.help "Path to JSON pubkey file to update knownhosts"
+    Opt.strArgument $
+        Opt.metavar "PUBKEY_FILE" <> Opt.help "Path to JSON pubkey file to update knownhosts"
 
 
 readKeys :: FilePath -> IO (Maybe [Ec2Instance])

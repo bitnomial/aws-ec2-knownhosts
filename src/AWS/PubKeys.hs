@@ -83,7 +83,7 @@ keyParser = skipToKeys *> keys <?> "keyParser"
 skipToKeys :: Parser ()
 skipToKeys = skipLine `skipTill` keysBegin <?> "skipToKeys"
   where
-    skipTill :: Alternative f => f a -> f b -> f b
+    skipTill :: (Alternative f) => f a -> f b -> f b
     skipTill s n = n <|> s *> skipTill s n
 
 
