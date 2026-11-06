@@ -2,24 +2,26 @@
 
 module Main where
 
-import AWS.PubKeys (writePubKeys)
+import AWS.PubKeys (UploadResult (..), inScope, syncPubKeys, writePubKeys)
 import AWS.Types (Ec2Instance (..))
 import Control.Monad ((<=<))
-import Data.Aeson (Result (..), fromJSON)
+import Data.Aeson (Result (..), eitherDecode, fromJSON, withObject, (.:))
 import Data.Aeson.Parser (json')
-import Data.Bool (bool)
-import Data.Function (on)
-import qualified Data.List as List
+import Data.Aeson.Types (parseEither)
+import Data.List (isInfixOf)
 import Data.Text (Text)
-import qualified Data.Text as Text (unpack)
+import qualified Data.Text as Text
+import qualified Data.Text.IO as Text
+import qualified Data.Text.Lazy as Text.Lazy
+import qualified Data.Text.Lazy.Encoding as Text.Lazy
 import Options.Applicative (Parser)
 import qualified Options.Applicative as Opt
-import System.Exit (ExitCode (..), exitWith)
+import System.Exit (ExitCode (..), die, exitWith)
+import System.IO (stderr)
 import System.IO.Extra (withTempFile)
 import qualified System.IO.Streams as Streams
 import System.IO.Streams.Attoparsec (parseFromStream)
-import System.PosixCompat (getFileStatus, isRegularFile)
-import System.Process (callProcess, rawSystem)
+import System.Process (readProcessWithExitCode)
 
 
 main :: IO ()
@@ -32,22 +34,53 @@ main = Opt.execParser opts >>= processPubKeys
                 <> Opt.header "aws-ec2-keysync - Synchronize pubkeys from EC2 to AWS S3"
 
 
-args :: Parser (FilePath, FilePath, Text)
+data Args = Args
+    { fqdnSuffixes :: [Text]
+    , localPubKeyFile :: FilePath
+    , remotePubKeyFile :: FilePath
+    , bucketName :: Text
+    }
+
+
+args :: Parser Args
 args =
-    (,,)
-        <$> Opt.strArgument (Opt.metavar "LOCAL_PUBKEY_FILENAME" <> Opt.help "Local pubkey file to send to S3")
+    Args
+        <$> Opt.many
+            ( Opt.strOption $
+                Opt.long "fqdn-suffix"
+                    <> Opt.metavar "SUFFIX"
+                    <> Opt.help
+                        "Keep only entries whose FQDN ends in SUFFIX. Repeat for more suffixes. \
+                        \Refuses local entries outside them and removes stored entries outside them."
+            )
+        <*> Opt.strArgument (Opt.metavar "LOCAL_PUBKEY_FILENAME" <> Opt.help "Local pubkey file to send to S3")
         <*> Opt.strArgument (Opt.metavar "REMOTE_PUBKEY_FILENAME" <> Opt.help "Destination pubkey file to send to S3")
         <*> Opt.strArgument (Opt.metavar "S3_BUCKET_NAME" <> Opt.help "AWS S3 bucket name to store pubkeys")
 
 
-processPubKeys :: (FilePath, FilePath, Text) -> IO ()
-processPubKeys (localPubKeyFile, remotePubKeyFile, bucketName) = do
-    newPubKeys <- readPubKeys localPubKeyFile
-    withTempFile $ \tempRemoteFile ->
-        withTempFile $ \mergedKeyFile -> do
-            remotePubKeys <- getFromS3 remotePubKeyFile tempRemoteFile bucketName
-            writePubKeys mergedKeyFile $ merge remotePubKeys newPubKeys
-            copyToS3 mergedKeyFile remotePubKeyFile bucketName
+processPubKeys :: Args -> IO ()
+processPubKeys options = do
+    newPubKeys <- readPubKeys (localPubKeyFile options)
+    case filter (not . inScope (fqdnSuffixes options)) newPubKeys of
+        [] -> pure ()
+        outside -> die $ "Refusing entries outside --fqdn-suffix: " <> unwords (map (Text.unpack . fqdn) outside)
+    result <-
+        withTempFile $ \tempRemoteFile ->
+            withTempFile $ \mergedKeyFile ->
+                syncPubKeys
+                    maxAttempts
+                    (download object tempRemoteFile)
+                    (upload object mergedKeyFile)
+                    (fqdnSuffixes options)
+                    newPubKeys
+    case result of
+        Just removed -> do
+            mapM_ (Text.hPutStrLn stderr . ("Removed entry outside --fqdn-suffix: " <>) . fqdn) removed
+            putStrLn "Upload successful"
+        Nothing -> die "The pubkey file kept changing during the sync. Try again."
+  where
+    object = S3Object (bucketName options) (remotePubKeyFile options)
+    maxAttempts = 5
 
 
 readPubKeys :: FilePath -> IO [Ec2Instance]
@@ -59,17 +92,6 @@ readPubKeys pubKeyFile =
     pubKeyParser = fmap fromJSON json'
 
 
-merge :: [Ec2Instance] -> [Ec2Instance] -> [Ec2Instance]
-merge = List.foldl' replace
-  where
-    replace instancePubKeys newInstancePubKey =
-        newInstancePubKey : filter (compareFqdn newInstancePubKey) instancePubKeys
-
-
-compareFqdn :: Ec2Instance -> Ec2Instance -> Bool
-compareFqdn = (/=) `on` fqdn
-
-
 handleResult :: Result a -> IO a
 handleResult (Success a) = pure a
 handleResult (Error s) = do
@@ -77,20 +99,47 @@ handleResult (Error s) = do
     exitWith (ExitFailure (-1))
 
 
-getFromS3 :: FilePath -> FilePath -> Text -> IO [Ec2Instance]
-getFromS3 remoteFile tempRemoteFile bucketName = do
-    _ <- callProcess "aws" ["s3", "cp", source, tempRemoteFile]
-    getFileStatus tempRemoteFile >>= bool (return []) (readPubKeys tempRemoteFile) . isRegularFile
-  where
-    source = "s3://" <> Text.unpack bucketName <> "/" <> remoteFile
+data S3Object = S3Object
+    { objectBucket :: Text
+    , objectKey :: FilePath
+    }
 
 
-copyToS3 :: FilePath -> FilePath -> Text -> IO ()
-copyToS3 localFile remoteFile bucketName =
-    rawSystem "aws" ["s3", "cp", localFile, dest] >>= checkUpload
+s3Args :: String -> S3Object -> [String]
+s3Args command object = ["s3api", command, "--bucket", Text.unpack (objectBucket object), "--key", objectKey object]
+
+
+-- | Download the stored entries and the object's ETag. A missing object has no
+-- entries and no ETag.
+download :: S3Object -> FilePath -> IO ([Ec2Instance], Maybe Text)
+download object file = do
+    (code, out, err) <- readProcessWithExitCode "aws" (s3Args "get-object" object <> [file]) ""
+    case code of
+        ExitSuccess -> do
+            entries <- readPubKeys file
+            etag <- either (die . ("Cannot read the ETag of the pubkey file: " <>)) pure $ responseETag out
+            pure (entries, Just etag)
+        ExitFailure _
+            | "NoSuchKey" `isInfixOf` err -> pure ([], Nothing)
+            | otherwise -> die $ "Failure downloading pubkey file. Check AWS credentials.\n" <> err
   where
-    dest = "s3://" <> Text.unpack bucketName <> "/" <> remoteFile
-    checkUpload ExitSuccess = putStrLn "Upload successful"
-    checkUpload _ = do
-        putStrLn "Failure uploading pubkey file. Check AWS credentials."
-        exitWith $ ExitFailure (-1)
+    responseETag = parseEither (withObject "GetObjectOutput" (.: "ETag")) <=< eitherDecode . Text.Lazy.encodeUtf8 . Text.Lazy.pack
+
+
+-- | Write the entries and upload them only if the object is unchanged since the
+-- download, so a concurrent sync cannot be overwritten. With no ETag, upload
+-- only if the object is still missing.
+upload :: S3Object -> FilePath -> Maybe Text -> [Ec2Instance] -> IO UploadResult
+upload object file etag entries = do
+    writePubKeys file entries
+    (code, _, err) <- readProcessWithExitCode "aws" (s3Args "put-object" object <> body <> condition) ""
+    case code of
+        ExitSuccess -> pure Uploaded
+        ExitFailure _
+            | any (`isInfixOf` err) ["PreconditionFailed", "ConditionalRequestConflict"] -> do
+                putStrLn "The pubkey file changed during the sync. Merging again."
+                pure Conflict
+            | otherwise -> die $ "Failure uploading pubkey file. Check AWS credentials.\n" <> err
+  where
+    body = ["--body", file, "--content-type", "application/json"]
+    condition = maybe ["--if-none-match", "*"] (\tag -> ["--if-match", Text.unpack tag]) etag

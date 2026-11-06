@@ -44,6 +44,11 @@ keys:
 
     aws-ec2-knownhosts aws-ec2-pubkeys.json
 
+Pass `--fqdn-suffix` one or more times to load only the entries of one
+stage, so a pubkey file cannot change the entries of another stage:
+
+    aws-ec2-knownhosts --fqdn-suffix .prod.example.com aws-ec2-pubkeys.json
+
 ## Update Shared Public Keys
 
 All provisioned boxes' public keys need to be up-to-date and stored on s3. In
@@ -54,8 +59,12 @@ can be run:
 
     Ex. aws-ec2-keysync aws-ec2-pubkeys.json aws-ec2-pubkeys.json knownhosts
 
-This will copy down the most up-to-date public key file from the specified environment,
-merge in any changes from the local aws-ec2-pubkeys.json file, and copies the file
-back into s3.
+This downloads the pubkey file from the bucket, merges in the local entries by
+FQDN, and uploads the result. The upload is conditional on the object being
+unchanged since the download, so a concurrent sync is merged again instead of
+overwritten.
+
+With `--fqdn-suffix`, the sync refuses local entries outside the suffixes and
+removes stored entries outside them, so the file holds only its own stage.
 
 _Note: Currently, the pubkey file in each environment is named aws-ec2-pubkeys.json_

@@ -1,9 +1,14 @@
+{-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE OverloadedStrings #-}
 
 module AWS.PubKeys (
     getPubKeys,
     writePubKeys,
     instanceParser,
+    inScope,
+    mergePubKeys,
+    UploadResult (..),
+    syncPubKeys,
 ) where
 
 import AWS.Types (Ec2Instance (..), Key (..))
@@ -27,7 +32,9 @@ import qualified Data.Attoparsec.ByteString.Char8 as C8
 import Data.ByteString.Char8 (ByteString, filter)
 import Data.ByteString.Lazy.Char8 (toStrict)
 import Data.List (find)
+import qualified Data.List as List
 import Data.Maybe (mapMaybe)
+import Data.Text (Text)
 import qualified Data.Text as Text
 import Data.Text.Encoding (decodeUtf8)
 import qualified System.IO.Streams as Streams
@@ -70,6 +77,50 @@ getPubKey inst = tryJust handler $ do
         , "--instance-id"
         , Text.unpack (instanceId inst)
         ]
+
+
+-- | Whether the instance's FQDN ends in one of the suffixes. An empty list
+-- matches every instance.
+inScope :: [Text] -> Ec2Instance -> Bool
+inScope [] _ = True
+inScope suffixes inst = any (`Text.isSuffixOf` fqdn inst) suffixes
+
+
+-- | Merge new entries into stored ones by FQDN, and the new entry wins. Stored
+-- entries outside the scope are removed, so a pubkey file holds only its own
+-- stage. Return the merged entries and the removed ones.
+mergePubKeys :: [Text] -> [Ec2Instance] -> [Ec2Instance] -> ([Ec2Instance], [Ec2Instance])
+mergePubKeys suffixes stored new = (List.foldl' replace kept new, removed)
+  where
+    (kept, removed) = List.partition (inScope suffixes) stored
+    replace entries entry = entry : List.filter ((/= fqdn entry) . fqdn) entries
+
+
+data UploadResult = Uploaded | Conflict
+    deriving (Show, Eq)
+
+
+-- | Download the stored entries and their version, merge the new entries in,
+-- and upload the result on the condition that the version is unchanged. On a
+-- 'Conflict' another sync wrote first, so download and merge again, up to the
+-- number of attempts. Return the stored entries removed by the scope, or
+-- 'Nothing' when every attempt conflicted.
+syncPubKeys ::
+    (Monad m) =>
+    Int ->
+    m ([Ec2Instance], version) ->
+    (version -> [Ec2Instance] -> m UploadResult) ->
+    [Text] ->
+    [Ec2Instance] ->
+    m (Maybe [Ec2Instance])
+syncPubKeys attempts download upload suffixes new
+    | attempts < 1 = pure Nothing
+    | otherwise = do
+        (stored, version) <- download
+        let (merged, removed) = mergePubKeys suffixes stored new
+        upload version merged >>= \case
+            Uploaded -> pure (Just removed)
+            Conflict -> syncPubKeys (attempts - 1) download upload suffixes new
 
 
 writePubKeys :: FilePath -> [Ec2Instance] -> IO ()
