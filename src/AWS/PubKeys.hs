@@ -28,11 +28,11 @@ import Data.ByteString.Char8 (ByteString, filter)
 import Data.ByteString.Lazy.Char8 (toStrict)
 import Data.List (find)
 import Data.Maybe (mapMaybe)
+import qualified Data.Text as Text
 import Data.Text.Encoding (decodeUtf8)
 import qualified System.IO.Streams as Streams
 import System.IO.Streams.Attoparsec (parseFromStream)
-import System.IO.Streams.Process (runInteractiveCommand)
-import Text.Printf (printf)
+import System.IO.Streams.Process (runInteractiveProcess)
 import Prelude hiding (filter, takeWhile)
 
 
@@ -49,7 +49,7 @@ instance Exception GetPubkeyException
 
 getPubKey :: Ec2Instance -> IO (Either Ec2Instance Ec2Instance)
 getPubKey inst = tryJust handler $ do
-    (_, stdout, _, _) <- runInteractiveCommand command
+    (_, stdout, _, _) <- runInteractiveProcess "aws" awsArgs Nothing Nothing
     keys' <- Streams.map (filter (/= '\r')) stdout >>= parseFromStream keyParser
     let newInst = (\k -> inst{instancePubKey = Just k}) <$> find ((keytype' ==) . keyType) keys'
     case newInst of
@@ -59,11 +59,17 @@ getPubKey inst = tryJust handler $ do
     handler :: SomeException -> Maybe Ec2Instance
     handler _ = Just inst
     keytype' = "ecdsa-sha2-nistp256"
-    command =
-        printf
-            "aws ec2 get-console-output --region %s --latest --output text --instance-id %s"
-            (region inst)
-            (instanceId inst)
+    awsArgs =
+        [ "ec2"
+        , "get-console-output"
+        , "--region"
+        , Text.unpack (region inst)
+        , "--latest"
+        , "--output"
+        , "text"
+        , "--instance-id"
+        , Text.unpack (instanceId inst)
+        ]
 
 
 writePubKeys :: FilePath -> [Ec2Instance] -> IO ()

@@ -6,6 +6,7 @@ module AWS.KnownHosts (
 
 import AWS.Types (Ec2Instance (..), Key (..))
 import Data.ByteString.Char8 (ByteString)
+import qualified Data.Text as Text
 import Data.Text.Encoding (encodeUtf8)
 import GHC.IO.Handle (BufferMode (NoBuffering))
 import System.Directory (getHomeDirectory)
@@ -13,8 +14,7 @@ import System.FilePath.Posix ((</>))
 import System.IO (IOMode (AppendMode))
 import qualified System.IO.Streams as Streams
 import System.IO.Streams.File (withFileAsOutputExt)
-import System.Process (callCommand)
-import Text.Printf (printf)
+import System.Process (callProcess)
 import Prelude hiding (filter, takeWhile)
 
 
@@ -56,9 +56,6 @@ writeKey _ _ = return ()
 
 
 removeKey :: Ec2Instance -> IO ()
-removeKey inst = do
-    callCommand $ printf removeKeyCommand (dns inst)
-    callCommand $ printf removeKeyCommand (fqdn inst)
-    callCommand $ printf removeKeyCommand (instanceId inst)
+removeKey inst = mapM_ removeHost [dns inst, fqdn inst, instanceId inst]
   where
-    removeKeyCommand = "ssh-keygen -R %s"
+    removeHost host = callProcess "ssh-keygen" ["-R", Text.unpack host]
