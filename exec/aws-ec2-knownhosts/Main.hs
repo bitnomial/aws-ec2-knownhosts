@@ -8,15 +8,18 @@ import Data.Aeson (Result (..), fromJSON)
 import Data.Aeson.Parser (json)
 import Options.Applicative (Parser)
 import qualified Options.Applicative as Opt
+import System.Directory (getHomeDirectory)
+import System.Exit (die)
+import System.FilePath.Posix ((</>))
 import qualified System.IO.Streams as Streams
 import System.IO.Streams.Attoparsec (parseFromStream)
 
 
 main :: IO ()
 main = do
-    Opt.execParser opts
-        >>= readKeys
-        >>= maybe noKeys updateKnownHosts
+    instances <- Opt.execParser opts >>= readKeys
+    homeDir <- getHomeDirectory
+    updateKnownHosts (homeDir </> ".ssh" </> "known_hosts") instances
   where
     opts =
         Opt.info (Opt.helper <*> args) $
@@ -31,16 +34,11 @@ args =
         Opt.metavar "PUBKEY_FILE" <> Opt.help "Path to JSON pubkey file to update knownhosts"
 
 
-readKeys :: FilePath -> IO (Maybe [Ec2Instance])
-readKeys =
-    fmap (maybeResult . fromJSON)
-        . flip Streams.withFileAsInput (parseFromStream json)
-
-
-maybeResult :: Result a -> Maybe a
-maybeResult (Success x) = Just x
-maybeResult (Error _) = Nothing
-
-
-noKeys :: IO ()
-noKeys = putStrLn "No keys were found in that pub_key_file"
+-- | Exit non-zero when the file does not match the schema, so a deploy does not
+-- continue with an unchanged known_hosts file.
+readKeys :: FilePath -> IO [Ec2Instance]
+readKeys file = do
+    value <- Streams.withFileAsInput file (parseFromStream json)
+    case fromJSON value of
+        Success instances -> pure instances
+        Error message -> die $ "Cannot read pubkey file " <> file <> ": " <> message
