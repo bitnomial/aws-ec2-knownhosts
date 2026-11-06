@@ -3,9 +3,11 @@
 module Main where
 
 import AWS.KnownHosts (knownHostsContent)
-import AWS.PubKeys (UploadResult (..), mergePubKeys, syncPubKeys)
+import AWS.PubKeys (UploadResult (..), consoleKey, instanceParser, mergePubKeys, syncPubKeys)
 import AWS.Types (Ec2Instance (..), Key (..))
 import Control.Monad (when)
+import Data.Attoparsec.ByteString.Char8 (parseOnly)
+import Data.Either (isLeft)
 import Data.IORef (atomicModifyIORef', modifyIORef', newIORef, readIORef)
 import Data.Text (Text)
 import Test.Tasty (TestTree, defaultMain, testGroup)
@@ -13,7 +15,7 @@ import Test.Tasty.HUnit (testCase, (@?=))
 
 
 main :: IO ()
-main = defaultMain $ testGroup "aws-ec2-knownhosts" [knownHostsContentTests, mergeTests, syncTests]
+main = defaultMain $ testGroup "aws-ec2-knownhosts" [knownHostsContentTests, mergeTests, syncTests, consoleKeyTests, instanceParserTests]
 
 
 knownHostsContentTests :: TestTree
@@ -75,6 +77,45 @@ syncTests =
             count <- readIORef downloads
             (result, count) @?= (Nothing, 3)
         ]
+
+
+consoleKeyTests :: TestTree
+consoleKeyTests =
+    testGroup
+        "consoleKey"
+        [ testCase "finds the ECDSA key in the host key block" $
+            consoleKey (consoleOutput "\r\n") @?= Just (Key "ecdsa-sha2-nistp256" "AAAAecdsa")
+        , testCase "has no key before the host key block is printed" $
+            consoleKey "[    0.000000] Booting Linux\n" @?= Nothing
+        ]
+  where
+    consoleOutput newline =
+        mconcat
+            [ "[   12.000000] cloud-init: boot"
+            , newline
+            , "-----BEGIN SSH HOST KEY KEYS-----"
+            , newline
+            , "ssh-ed25519 AAAAed25519 root@host"
+            , newline
+            , "ecdsa-sha2-nistp256 AAAAecdsa root@host"
+            , newline
+            , "-----END SSH HOST KEY KEYS-----"
+            , newline
+            ]
+
+
+instanceParserTests :: TestTree
+instanceParserTests =
+    testGroup
+        "instanceParser"
+        [ testCase "reads one instance on each line and skips blank lines" $
+            fmap (map fqdn) (parseOnly instanceParser (instanceLine <> "\n\n" <> instanceLine <> "\n"))
+                @?= Right ["web-01.prim.dev.example.com", "web-01.prim.dev.example.com"]
+        , testCase "fails on a line that is not an instance" $
+            isLeft (parseOnly instanceParser (instanceLine <> "\n{\"fqdn\": \"x\"}\n")) @?= True
+        ]
+  where
+    instanceLine = "{\"fqdn\": \"web-01.prim.dev.example.com\", \"region\": \"us-east-2\", \"instance_id\": \"i-1\", \"dns\": \"ip-1\"}"
 
 
 other :: Ec2Instance

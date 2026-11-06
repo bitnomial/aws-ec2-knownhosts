@@ -91,6 +91,7 @@ test-suite aws-ec2-knownhosts-test
   ghc-options:       -threaded -Wall -fwarn-tabs
 
   build-depends: base        >= 4.7  && < 5
+               , attoparsec  >= 0.12 && < 0.15
                , aws-ec2-knownhosts
                , bytestring  >= 0.10 && < 0.13
                , tasty       >= 1.4  && < 1.6
