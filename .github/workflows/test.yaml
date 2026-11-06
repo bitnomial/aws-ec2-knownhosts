@@ -14,26 +14,32 @@ jobs:
   test:
     if: github.event.pull_request.draft == false
 
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-24.04
 
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
+
+      # The ubuntu-24.04 image has no Haskell tools. Stack installs the GHC of
+      # the resolver, so skip the global GHC.
+      - uses: haskell-actions/setup@0f8e8c99d88aeb3fbfd523f1ef2c6f762d10d64d # v2.12.1
+        with:
+          enable-stack: true
+          stack-no-global: true
 
       # Github actions L1 cache
       - name: stack home cache
         id: cache-home-stack
-        uses: actions/cache@v2
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
-          path: |
-            /github/home/.stack
+          path: ~/.stack
           key: ${{ runner.os }}-home-stack-${{ hashFiles('stack.yaml.lock') }}
           restore-keys: |
             ${{ runner.os }}-home-stack-
 
       - name: stack work cache
-        uses: actions/cache@v2
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         id: cache-stack-work
         with:
           path: |
