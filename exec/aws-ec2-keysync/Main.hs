@@ -9,17 +9,17 @@ import Data.Aeson (Result (..), fromJSON)
 import Data.Aeson.Parser (json')
 import Data.Bool (bool)
 import Data.Function (on)
-import Data.List (foldl')
+import qualified Data.List as List
 import Data.Text (Text)
 import qualified Data.Text as Text (unpack)
 import Options.Applicative (Parser)
 import qualified Options.Applicative as Opt
-import System.Directory (removeFile)
 import System.Exit (ExitCode (..), exitWith)
+import System.IO.Extra (withTempFile)
 import qualified System.IO.Streams as Streams
 import System.IO.Streams.Attoparsec (parseFromStream)
 import System.PosixCompat (getFileStatus, isRegularFile)
-import System.Process (callProcess, system)
+import System.Process (callProcess, rawSystem)
 
 
 main :: IO ()
@@ -43,13 +43,11 @@ args =
 processPubKeys :: (FilePath, FilePath, Text) -> IO ()
 processPubKeys (localPubKeyFile, remotePubKeyFile, bucketName) = do
     newPubKeys <- readPubKeys localPubKeyFile
-    remotePubKeys <- getFromS3 remotePubKeyFile tempRemoteFile bucketName
-    writePubKeys mergedKeyFile $ merge remotePubKeys newPubKeys
-    copyToS3 mergedKeyFile remotePubKeyFile bucketName
-  where
-    tempRemoteFile :: FilePath
-    tempRemoteFile = "/tmp/" <> Text.unpack bucketName <> "-" <> remotePubKeyFile
-    mergedKeyFile = "/tmp/merged-keys.json"
+    withTempFile $ \tempRemoteFile ->
+        withTempFile $ \mergedKeyFile -> do
+            remotePubKeys <- getFromS3 remotePubKeyFile tempRemoteFile bucketName
+            writePubKeys mergedKeyFile $ merge remotePubKeys newPubKeys
+            copyToS3 mergedKeyFile remotePubKeyFile bucketName
 
 
 readPubKeys :: FilePath -> IO [Ec2Instance]
@@ -62,7 +60,7 @@ readPubKeys pubKeyFile =
 
 
 merge :: [Ec2Instance] -> [Ec2Instance] -> [Ec2Instance]
-merge = foldl' replace
+merge = List.foldl' replace
   where
     replace instancePubKeys newInstancePubKey =
         newInstancePubKey : filter (compareFqdn newInstancePubKey) instancePubKeys
@@ -89,14 +87,10 @@ getFromS3 remoteFile tempRemoteFile bucketName = do
 
 copyToS3 :: FilePath -> FilePath -> Text -> IO ()
 copyToS3 localFile remoteFile bucketName =
-    system (unwords ["aws", "s3", "cp", localFile, dest]) >>= checkUpload
+    rawSystem "aws" ["s3", "cp", localFile, dest] >>= checkUpload
   where
     dest = "s3://" <> Text.unpack bucketName <> "/" <> remoteFile
     checkUpload ExitSuccess = putStrLn "Upload successful"
     checkUpload _ = do
         putStrLn "Failure uploading pubkey file. Check AWS credentials."
         exitWith $ ExitFailure (-1)
-
-
-cleanup :: FilePath -> FilePath -> IO ()
-cleanup tempRemoteFile mergedKeyFile = removeFile tempRemoteFile >> removeFile mergedKeyFile
