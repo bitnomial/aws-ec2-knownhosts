@@ -32,9 +32,10 @@ keys of the included instances:
 
     aws-ec2-pubkeys aws-ec2-instances.json aws-ec2-pubkeys.json
 
-Commit the `aws-ec2-pubkeys.json` file to a repository to keep the
-public keys permanently. The public keys don't persist on the EC2
-instance after reboot.
+The console output does not keep the keys after a reboot, so store the
+pubkey file with `aws-ec2-keysync` (below). The tool exits non-zero while an
+instance has not printed its keys yet, and fails with the `aws` error when the
+call itself fails.
 
 ## Update Known Hosts
 

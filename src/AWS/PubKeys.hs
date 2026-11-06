@@ -3,6 +3,7 @@
 
 module AWS.PubKeys (
     getPubKeys,
+    consoleKey,
     writePubKeys,
     instanceParser,
     inScope,
@@ -13,8 +14,8 @@ module AWS.PubKeys (
 
 import AWS.Types (Ec2Instance (..), Key (..))
 import Control.Applicative (Alternative, (<|>))
-import Control.Concurrent.Async (mapConcurrently)
-import Control.Exception (Exception, SomeException, throwIO, tryJust)
+import Control.Concurrent.Async (concurrently, mapConcurrently)
+import Control.Exception (Exception (..), throwIO)
 import Data.Aeson (decodeStrict', encode)
 import qualified Data.Attoparsec.ByteString as W8
 import Data.Attoparsec.ByteString.Char8 (
@@ -24,48 +25,57 @@ import Data.Attoparsec.ByteString.Char8 (
     isEndOfLine,
     isSpace,
     manyTill',
+    parseOnly,
     skipSpace,
     string,
     (<?>),
  )
 import qualified Data.Attoparsec.ByteString.Char8 as C8
 import Data.ByteString.Char8 (ByteString, filter)
+import qualified Data.ByteString.Char8 as BS
 import Data.ByteString.Lazy.Char8 (toStrict)
 import Data.List (find)
 import qualified Data.List as List
-import Data.Maybe (mapMaybe)
 import Data.Text (Text)
 import qualified Data.Text as Text
 import Data.Text.Encoding (decodeUtf8)
+import System.Exit (ExitCode (..))
 import qualified System.IO.Streams as Streams
-import System.IO.Streams.Attoparsec (parseFromStream)
-import System.IO.Streams.Process (runInteractiveProcess)
+import System.IO.Streams.Process (runInteractiveProcess, waitForProcess)
 import Prelude hiding (filter, takeWhile)
 
 
+-- | Find the host key of each instance in its console output. 'Left' is an
+-- instance whose output has no host key yet. A failed @aws@ call throws, so an
+-- expired credential is not mistaken for an instance that is still booting.
 getPubKeys :: [Ec2Instance] -> IO [Either Ec2Instance Ec2Instance]
 getPubKeys = mapConcurrently getPubKey
 
 
-data GetPubkeyException = NoKeyTypeFound Ec2Instance [Key]
+data GetPubkeyException = ConsoleOutputFailed Ec2Instance ByteString
     deriving (Show, Eq)
 
 
-instance Exception GetPubkeyException
+instance Exception GetPubkeyException where
+    displayException (ConsoleOutputFailed inst errors) =
+        "aws ec2 get-console-output failed for "
+            <> Text.unpack (fqdn inst)
+            <> " ("
+            <> Text.unpack (instanceId inst)
+            <> "): "
+            <> BS.unpack errors
 
 
 getPubKey :: Ec2Instance -> IO (Either Ec2Instance Ec2Instance)
-getPubKey inst = tryJust handler $ do
-    (_, stdout, _, _) <- runInteractiveProcess "aws" awsArgs Nothing Nothing
-    keys' <- Streams.map (filter (/= '\r')) stdout >>= parseFromStream keyParser
-    let newInst = (\k -> inst{instancePubKey = Just k}) <$> find ((keytype' ==) . keyType) keys'
-    case newInst of
-        Just inst' -> pure inst'
-        Nothing -> throwIO $ NoKeyTypeFound inst keys'
+getPubKey inst = do
+    (stdin, stdout, stderr, process) <- runInteractiveProcess "aws" awsArgs Nothing Nothing
+    Streams.write Nothing stdin
+    (output, errors) <- concurrently (readAll stdout) (readAll stderr)
+    waitForProcess process >>= \case
+        ExitSuccess -> pure $ maybe (Left inst) (\k -> Right inst{instancePubKey = Just k}) (consoleKey output)
+        ExitFailure _ -> throwIO $ ConsoleOutputFailed inst errors
   where
-    handler :: SomeException -> Maybe Ec2Instance
-    handler _ = Just inst
-    keytype' = "ecdsa-sha2-nistp256"
+    readAll = fmap BS.concat . Streams.toList
     awsArgs =
         [ "ec2"
         , "get-console-output"
@@ -77,6 +87,13 @@ getPubKey inst = tryJust handler $ do
         , "--instance-id"
         , Text.unpack (instanceId inst)
         ]
+
+
+-- | The ECDSA host key in an instance's console output, if the output has one.
+consoleKey :: ByteString -> Maybe Key
+consoleKey output =
+    either (const Nothing) (find ((== "ecdsa-sha2-nistp256") . keyType)) $
+        parseOnly keyParser (filter (/= '\r') output)
 
 
 -- | Whether the instance's FQDN ends in one of the suffixes. An empty list
@@ -127,10 +144,13 @@ writePubKeys :: FilePath -> [Ec2Instance] -> IO ()
 writePubKeys file = Streams.withFileAsOutput file . Streams.write . Just . toStrict . encode
 
 
+-- | One JSON instance on each line. Blank lines are skipped, and any other line
+-- that is not an instance fails the parse, so no instance is dropped silently.
 instanceParser :: Parser [Ec2Instance]
-instanceParser = mapMaybe decodeStrict' <$> line <?> "instances"
+instanceParser = (traverse decodeLine . List.filter (not . BS.null) =<< lines') <?> "instances"
   where
-    line = W8.takeTill isEndOfLine `W8.sepBy` endOfLine <* endOfInput
+    lines' = W8.takeTill isEndOfLine `W8.sepBy` endOfLine <* endOfInput
+    decodeLine line = maybe (fail $ "not an instance: " <> BS.unpack line) pure (decodeStrict' line)
 
 
 keyParser :: Parser [Key]
