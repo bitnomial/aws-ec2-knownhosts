@@ -63,6 +63,7 @@ executable aws-ec2-knownhosts
                , filepath             >= 1.4  && < 1.6
                , io-streams           >= 1.1  && < 1.6
                , optparse-applicative >= 0.16 && < 0.19
+               , text                 >= 2.0  && < 2.3
 
 
 executable aws-ec2-keysync
@@ -79,7 +80,6 @@ executable aws-ec2-keysync
                , io-streams           >= 1.1  && < 1.6
                , text                 >= 2.0  && < 2.3
                , optparse-applicative >= 0.16 && < 0.19
-               , unix-compat          >= 0.4  && < 0.8
                , process              >= 1.0  && < 1.7
 
 

@@ -3,9 +3,11 @@
 module Main where
 
 import AWS.KnownHosts (updateKnownHosts)
+import AWS.PubKeys (inScope)
 import AWS.Types (Ec2Instance (..))
 import Data.Aeson (Result (..), fromJSON)
 import Data.Aeson.Parser (json)
+import Data.Text (Text)
 import Options.Applicative (Parser)
 import qualified Options.Applicative as Opt
 import System.Directory (getHomeDirectory)
@@ -17,9 +19,10 @@ import System.IO.Streams.Attoparsec (parseFromStream)
 
 main :: IO ()
 main = do
-    instances <- Opt.execParser opts >>= readKeys
+    (suffixes, pubKeyFile) <- Opt.execParser opts
+    instances <- readKeys pubKeyFile
     homeDir <- getHomeDirectory
-    updateKnownHosts (homeDir </> ".ssh" </> "known_hosts") instances
+    updateKnownHosts (homeDir </> ".ssh" </> "known_hosts") (filter (inScope suffixes) instances)
   where
     opts =
         Opt.info (Opt.helper <*> args) $
@@ -28,10 +31,16 @@ main = do
                 <> Opt.header "aws-ec2-knownhosts - Get EC2 pubkeys on your known_hosts file"
 
 
-args :: Parser FilePath
+args :: Parser ([Text], FilePath)
 args =
-    Opt.strArgument $
-        Opt.metavar "PUBKEY_FILE" <> Opt.help "Path to JSON pubkey file to update knownhosts"
+    (,)
+        <$> Opt.many
+            ( Opt.strOption $
+                Opt.long "fqdn-suffix"
+                    <> Opt.metavar "SUFFIX"
+                    <> Opt.help "Load only entries whose FQDN ends in SUFFIX. Repeat for more suffixes."
+            )
+        <*> Opt.strArgument (Opt.metavar "PUBKEY_FILE" <> Opt.help "Path to JSON pubkey file to update knownhosts")
 
 
 -- | Exit non-zero when the file does not match the schema, so a deploy does not
